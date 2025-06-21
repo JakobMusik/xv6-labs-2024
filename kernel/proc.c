@@ -319,6 +319,7 @@ fork(void)
   release(&wait_lock);
 
   acquire(&np->lock);
+  np->syscall_trace_mask = p->syscall_trace_mask;
   np->state = RUNNABLE;
   release(&np->lock);
 
