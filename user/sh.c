@@ -4,6 +4,9 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
+// #include "kernel/stat.h"
+// #include "kernel/fs.h"
+
 // Parsed command representation
 #define EXEC  1
 #define REDIR 2
