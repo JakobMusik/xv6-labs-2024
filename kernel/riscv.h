@@ -376,6 +376,9 @@ typedef uint64 *pagetable_t; // 512 PTEs
 #define PTE_W (1L << 2)
 #define PTE_X (1L << 3)
 #define PTE_U (1L << 4) // user can access
+#ifdef LAB_PGTBL
+#define PTE_SUPER (1L << 5)
+#endif
 
 
 

@@ -67,6 +67,10 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+#ifdef LAB_PGTBL
+void*           super_kalloc(void);
+void            super_kfree(void*);
+#endif
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -186,6 +190,8 @@ void            vmprint(pagetable_t);
 #endif
 #ifdef LAB_PGTBL
 pte_t*          pgpte(pagetable_t, uint64);
+pte_t*          super_walk(pagetable_t, uint64, int);
+int             super_mappages(pagetable_t, uint64, uint64, uint64, int);
 #endif
 
 // plic.c

@@ -23,10 +23,16 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct {
+  struct spinlock lock;
+  struct run *freelist;
+} super_kmem;
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&super_kmem.lock, "super_kmem");
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -35,8 +41,19 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+
+  int superpgsize = 0;
+#ifdef LAB_PGTBL
+  superpgsize = SUPERPGSIZE;
+#endif
+  for(; p + PGSIZE <= (char*)pa_end - 16 * superpgsize; p += PGSIZE)
     kfree(p);
+
+#ifdef LAB_PGTBL
+  p = (char*)SUPERPGROUNDUP((uint64)p);
+  for(; p + SUPERPGSIZE <= (char*)pa_end; p += SUPERPGSIZE)
+    super_kfree(p);
+#endif
 }
 
 // Free the page of physical memory pointed at by pa,
@@ -62,6 +79,27 @@ kfree(void *pa)
   release(&kmem.lock);
 }
 
+#ifdef LAB_PGTBL
+void
+super_kfree(void* pa)
+{
+  struct run *r;
+
+  if(((uint64)pa % SUPERPGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("superkfree");
+
+  // Fill with junk to catch dangling refs.
+  memset(pa, 1, SUPERPGSIZE);
+
+  r = (struct run*)pa;
+
+  acquire(&super_kmem.lock);
+  r->next = super_kmem.freelist;
+  super_kmem.freelist = r;
+  release(&super_kmem.lock);
+};
+#endif
+
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
@@ -80,3 +118,21 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+#ifdef LAB_PGTBL
+void *
+super_kalloc(void)
+{
+  struct run *r;
+
+  acquire(&super_kmem.lock);
+  r = super_kmem.freelist;
+  if(r)
+    super_kmem.freelist = r->next;
+  release(&super_kmem.lock);
+
+  if(r)
+    memset((char*)r, 5, SUPERPGSIZE); // fill with junk
+  return (void*)r;
+}
+#endif
