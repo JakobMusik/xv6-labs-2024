@@ -364,7 +364,8 @@ typedef uint64 *pagetable_t; // 512 PTEs
 #define FLAGSHIFT 10
 
 #ifdef LAB_PGTBL
-#define SUPERPGSIZE (2 * (1 << 20)) // bytes per page
+#define SUPERPGNUM 50 // in order to pass the `sbrkmuch` checkpoint in usertests
+#define SUPERPGSIZE (1 << 21) // bytes per page
 #define SUPERPGROUNDUP(sz)  (((sz)+SUPERPGSIZE-1) & ~(SUPERPGSIZE-1))
 #endif
 
@@ -377,10 +378,11 @@ typedef uint64 *pagetable_t; // 512 PTEs
 #define PTE_X (1L << 3)
 #define PTE_U (1L << 4) // user can access
 #ifdef LAB_PGTBL
-#define PTE_SUPER (1L << 5)
+/**
+ * bits RSW (8-9): Reserved for supervisor software. These bits are ignored by hardware
+ */
+#define PTE_SUPER (1L << 8)
 #endif
-
-
 
 #if defined(LAB_MMAP) || defined(LAB_PGTBL)
 #define PTE_LEAF(pte) (((pte) & PTE_R) | ((pte) & PTE_W) | ((pte) & PTE_X))

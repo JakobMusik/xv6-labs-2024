@@ -43,10 +43,12 @@ freerange(void *pa_start, void *pa_end)
   p = (char*)PGROUNDUP((uint64)pa_start);
 
   int superpgsize = 0;
+  int superpgnum = 0;
 #ifdef LAB_PGTBL
   superpgsize = SUPERPGSIZE;
+  superpgnum = SUPERPGNUM;
 #endif
-  for(; p + PGSIZE <= (char*)pa_end - 16 * superpgsize; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)pa_end - superpgnum * superpgsize; p += PGSIZE)
     kfree(p);
 
 #ifdef LAB_PGTBL

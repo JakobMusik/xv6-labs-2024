@@ -270,6 +270,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0) {
       printf("va=%ld pte=%ld\n", a, *pte);
+      // printf("va=%ld pte=%ld pagetable=%p npages=%ld do_free=%d\n", a, *pte, (void*)pagetable, free_sz, do_free);
       panic("uvmunmap: not mapped");
     }
     if(PTE_FLAGS(*pte) == PTE_V)
@@ -364,7 +365,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += sz){
-    if (a % SUPERPGSIZE == 0 && a + SUPERPGSIZE <= newsz) {
+    if (a % SUPERPGSIZE == 0 && a + SUPERPGSIZE < newsz) { // notice it's '<' less than not less equal
       sz = SUPERPGSIZE;
       mem = super_kalloc();
       printf("malloc super page\n");
