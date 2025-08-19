@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "initializer_list": "c",
+        "spinlock.h": "c",
+        "memlayout.h": "c",
+        "stat.h": "c"
+    }
+}
