@@ -124,9 +124,18 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->sigalarm_ticks = 0;
+  p->sigalarm_handler = 0;
+  p->proc_ticks_passed = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  if((p->orig_trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
     release(&p->lock);
     return 0;
@@ -161,6 +170,14 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+  if (p->orig_trapframe)
+    kfree((void*)p->orig_trapframe);
+  p->orig_trapframe = 0;
+
+  p->proc_ticks_passed = 0;
+  p->sigalarm_ticks = 0;
+  p->sigalarm_handler = 0;
+  p->handler_running = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -512,6 +529,21 @@ void
 yield(void)
 {
   struct proc *p = myproc();
+  if (!p->handler_running) {
+    p->proc_ticks_passed++;
+    if (p->sigalarm_ticks > 0 && p->proc_ticks_passed >= p->sigalarm_ticks)
+    {
+      // save user registers
+      *(p->orig_trapframe) = *(p->trapframe);
+      // set up to enter handler
+      p->trapframe->epc = (uint64)(p->sigalarm_handler);
+      // p->trapframe->sp -= 16; // leave some gap for sig_handler stack frame
+      p->trapframe->ra = 0;                           // illegal return address (must use sigreturn())
+      p->proc_ticks_passed = 0;
+      p->handler_running = 1;
+    }
+  }
+
   acquire(&p->lock);
   p->state = RUNNABLE;
   sched();
