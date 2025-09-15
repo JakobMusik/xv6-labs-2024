@@ -42,9 +42,12 @@ sys_sbrk(void)
   int n;
 
   argint(0, &n);
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
+  struct proc* p = myproc();
+
+  addr = p->sz;
+  uvmdealloc(p->pagetable, p->sz, p->sz + n);
+  p->sz += n;
+
   return addr;
 }
 
