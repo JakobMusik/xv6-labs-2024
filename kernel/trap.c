@@ -29,6 +29,31 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+int
+pagefaulthandler(void)
+{
+  struct proc* p = myproc();
+  uint64 va = r_stval();
+  if (va >= p->sz) {
+    setkilled(p);
+    return -1;
+  }
+  else {
+    pte_t* pte = walk(p->pagetable, va, 0);
+    if (islazypage(p, va, pte)) {
+      if (alloclazypage(p, va) == -1)
+        setkilled(p);
+    }
+    else if (iscowpage(p, va, pte)) {
+      if (alloccowpage(p, va, pte) == -1)
+        setkilled(p);
+    }
+    else {
+      setkilled(p);
+    }
+  }
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -49,7 +74,6 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
-
   
   if(r_scause() == 8){
     // system call
@@ -70,30 +94,14 @@ usertrap(void)
     // ok
   } else if (r_scause() == 13 /* load page fault */
           || r_scause() == 15 /* store page fault */) {
-    uint64 va = r_stval();
-    if (va >= p->sz) {
-      p->killed = 1;
-    }
-    else {
-      // lazy page fault
-      pte_t* pte = walk(p->pagetable, va, 0);
-      if (islazypage(p, va, pte)) {
-        if (alloclazypage(p, va) == -1)
-          p->killed = 1;
-      }
-      else if (iscowpage(p, va, pte)) {
-        if (alloccowpage(p, va, pte) == -1)
-          p->killed = 1;
-      }
-      else {
-        p->killed = 1;
-      }
+    if (pagefaulthandler() != 0) {
+      setkilled(p);
     }
   }
   else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
+    printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+    setkilled(p);
   }
 
   if(killed(p))
