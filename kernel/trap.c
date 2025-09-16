@@ -29,31 +29,6 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
-int
-pagefaulthandler(void)
-{
-  struct proc* p = myproc();
-  uint64 va = r_stval();
-  if (va >= p->sz) {
-    setkilled(p);
-    return -1;
-  }
-  else {
-    pte_t* pte = walk(p->pagetable, va, 0);
-    if (islazypage(p, va, pte)) {
-      if (alloclazypage(p, va) == -1)
-        setkilled(p);
-    }
-    else if (iscowpage(p, va, pte)) {
-      if (alloccowpage(p, va, pte) == -1)
-        setkilled(p);
-    }
-    else {
-      setkilled(p);
-    }
-  }
-}
-
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -94,24 +69,8 @@ usertrap(void)
     // ok
   } else if (r_scause() == 13 /* load page fault */
           || r_scause() == 15 /* store page fault */) {
-    uint64 va = r_stval();
-    if (va >= p->sz) {
-      p->killed = 1;
-    }
-    else {
-      // lazy page fault
-      pte_t* pte = walk(p->pagetable, va, 0);
-      if (inlazypage(p, va, pte)) {
-        if (alloclazypage(p, va) == -1)
-          p->killed = 1;
-      }
-      else if (incowpage(p, va, pte)) { // cow page fault
-        if (alloccowpage(p, va, pte) == -1)
-          p->killed = 1;
-      }
-      else {
-        p->killed = 1;
-      }
+    if (pagefaulthandler(p, r_stval(), r_scause()) == -1) {
+      setkilled(p);
     }
   }
   else {
