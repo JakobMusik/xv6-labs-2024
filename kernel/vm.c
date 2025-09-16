@@ -361,26 +361,23 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-  pte_t* pte;
-  struct proc* p = myproc();
+  struct proc *p = myproc();
+  pte_t* pte = 0;
+
+  if (dstva >= MAXVA - len || dstva + len > p->sz) // still need to check dstva >= MAXVA first, since it could be overflowed
+    return -1;
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    if(va0 >= MAXVA)
-      return -1;
     pte = walk(pagetable, va0, 0);
-    if (pte && (*pte & PTE_V) && (*pte & PTE_U) == 0) { // not a user page
-      return -1;
-    }
-
     // get the physical address of the page, allocate if needed
-    if (dstva < p->sz && islazypage(pte)) {
+    if (islazypage(pte)) { // no need to check PTE_U as lazy page only happens when entry not mapped or invalid
       if ((pa0 = alloclazypage(pagetable, va0)) == -1) {
         setkilled(p);
         return -1;
       }
     }
-    else if (dstva < p->sz && iscowpage(pte) && (*pte & PTE_U)) { // copy-on-write page
+    else if (iscowpage(pte) && (*pte & PTE_U)) { // check PTE_U to avoid accessing stack guard page
       if ((pa0 = alloccowpage(pagetable, va0, pte)) == -1) {
         setkilled(p);
         return -1;
@@ -415,24 +412,17 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
   uint64 n, va0, pa0;
   struct proc* p = myproc();
   pte_t* pte = 0;
-  // int islazyflag = 0;
+  int islazyflag = 0;
+
+  if (srcva >= MAXVA - len || srcva + len > p->sz) // still need to check va >= MAXVA first, since it could be overflowed
+    return -1;
 
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
-    if(va0 >= MAXVA)
-      return -1;
     pte = walk(pagetable, va0, 0);
-    if (pte && (*pte & PTE_V) && (*pte & PTE_U) == 0) { // not a user page
-      return -1;
-    }
     // if va0 is in lazypage don't allocate only set memory to zero
-    if (va0 < p->sz && islazypage(pte)) {
-      // islazyflag = 1;
-      if ((pa0 = alloclazypage(pagetable, va0)) == -1) {
-        setkilled(p);
-        return -1;
-      }
-      // pa0 = 1; // dummy value
+    if (islazypage(pte)) {
+      islazyflag = 1;
     }
     else if (pte && (*pte & PTE_V) && (*pte & PTE_R) && (*pte & PTE_U)) {
       pa0 = PTE2PA(*pte);
@@ -444,18 +434,17 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
     n = PGSIZE - (srcva - va0);
     if(n > len)
       n = len;
-    // if (islazyflag) {
-    //   memset(dst, 0, n); // return zeroed memory for lazy page
-    // }
-    // else {
-    //   memmove(dst, (void*)(pa0 + (srcva - va0)), n);
-    // }
+    if (islazyflag) {
+      memset(dst, 0, n); // return zeroed memory for lazy page
+    }
+    else {
+      memmove(dst, (void*)(pa0 + (srcva - va0)), n);
+    }
 
-    memmove(dst, (void*)(pa0 + (srcva - va0)), n);
     len -= n;
     dst += n;
     srcva = va0 + PGSIZE;
-    // islazyflag = 0;
+    islazyflag = 0;
   }
   return 0;
 }
@@ -474,7 +463,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
 
-    if(pa0 == 0)
+    if(pa0 == 0) // copyinstr from both lazy page or cow page should be illegal
       return -1;
     n = PGSIZE - (srcva - va0);
     if(n > max)
@@ -645,4 +634,76 @@ pagefaulthandler(struct proc* p, uint64 va, uint64 scause)
     }
     return -1;
   }
+}
+
+void
+vmprint_recursive(pagetable_t pagetable, int level, uint64 va) {
+  pte_t* pte;
+  for (int i = 0; i < 512; ++i) {
+    pte = &pagetable[i];
+    if (*pte & PTE_V) {
+      for (int j = level; j <= 2; ++j) {
+        printf(" ..");
+      }
+      uint64 new_va = va | ((uint64)i << PXSHIFT(level));
+      if (new_va & (1L << 38)) {
+        new_va |= ~((1L << 39) - 1);
+      } else {
+        new_va &= ((1L << 39) - 1);
+      }
+      /**
+       * answer has preceding '1's for some reason, 
+       * but first 1 of '3fc' is at bit 37 not bit 38, 
+       * it is indeed correct sign-extension of sv39
+       * (requires preceding bits set to 1 if bit 38 is 1).
+       * guess the official answer has some problems?
+       * possible problem made by the official code below:
+       */
+      if (1) {
+        new_va = va | ((int)i << PXSHIFT(level));
+      }
+
+      printf("%d: pte %p pa %p", i, (void*)*pte, (void*)PTE2PA(*pte));
+      if (level == 0) {
+        printf(" va %p", (void*)new_va);
+        if (*pte & PTE_U) {
+          printf(" U");
+        }
+        if (*pte & PTE_R) {
+          printf(" R");
+        }
+        if (*pte & PTE_W) {
+          printf(" W");
+        }
+        if (*pte & PTE_X) {
+          printf(" X");
+        }
+        if (*pte & PTE_COW) {
+          printf(" COW");
+        }
+        int ref = kgetrefcnt(PTE2PA(*pte));
+        if (ref > 0) {
+          printf(" ref %d", ref);
+        }
+        else if (ref == 0) {
+          printf(" ref 0");
+        }
+        else {
+          printf(" ref ?");
+        }
+      }
+      printf("\n");
+      if (level != 0) {
+        vmprint_recursive((pagetable_t)PTE2PA(*pte), level - 1, new_va);
+      }
+    }
+  }
+}
+
+// only for debugging
+void
+vmprint(pagetable_t pagetable) {
+  printf("page table %p\n", pagetable);
+
+  vmprint_recursive(pagetable, 2, 0);
 }
