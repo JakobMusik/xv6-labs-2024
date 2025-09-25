@@ -18,10 +18,10 @@ static inline uint32 bswapl(uint32 val)
 
 // Use these macros to convert network bytes to the native byte order.
 // Note that Risc-V uses little endian while network order is big endian.
-#define ntohs bswaps
-#define ntohl bswapl
-#define htons bswaps
-#define htonl bswapl
+#define ntohs bswaps // network-to-host 16-bit conversion: swap byte order
+#define ntohl bswapl // network-to-host 32-bit conversion: swap byte order
+#define htons bswaps // host-to-network 16-bit conversion: swap byte order
+#define htonl bswapl // host-to-network 32-bit conversion: swap byte order
 
 
 //
